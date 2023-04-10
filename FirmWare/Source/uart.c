@@ -17,6 +17,7 @@
 #include "events.h"
 #include "command.h"
 #include "uart.h"
+#include "vt100.h"
 
 //*************************************************************************************************
 // Внешние переменные
@@ -30,7 +31,9 @@ extern UART_HandleTypeDef huart1;
 #define SEND_BUFF_SIZE      1024            //размер передающего буфера
 
 #define KEY_BACKSPACE       0x08            //удаление символа
-#define KEY_PREV_CMD        0x1B            //повтор предыдущей команды
+#define KEY_ESC_CMD         0x1B            //
+
+static char const key_up[]   = { 0x1B, 0x5B, 0x41 };
 
 //соответствие значений индексов скорости и значения скорости обмена, 
 //длительность передачи одного байта (мкс)
@@ -59,8 +62,10 @@ osEventFlagsId_t uart_event = NULL;
 //*************************************************************************************************
 // Локальные переменные
 //*************************************************************************************************
+static uint16_t esc_ind = 0;
 static uint16_t recv_ind = 0, tail = 0, head_tx = 0, tail_tx = 0;
-static char recv_ch, recv_buff[RECV_BUFF_SIZE], send_buff[SEND_BUFF_SIZE];
+static char recv_ch, recv_temp[RECV_BUFF_SIZE];
+static char recv_buff[RECV_BUFF_SIZE], send_buff[SEND_BUFF_SIZE];
 static osSemaphoreId_t sem_busy;
 
 //*************************************************************************************************
@@ -105,6 +110,7 @@ static void TaskUart( void *argument ) {
 
     int32_t event;
 
+    vt100Init();
     for ( ;; ) {
         event = osEventFlagsWait( uart_event, EVN_UART_MASK, osFlagsWaitAny, osWaitForever );
         if ( event & EVN_UART_START ) {
@@ -149,23 +155,26 @@ void UartRecvComplt( void ) {
         HAL_UART_Receive_IT( &huart1, (uint8_t *)&recv_ch, sizeof( recv_ch ) );
         return;
        }
-    /*if ( recv_ch == KEY_PREV_CMD ) {
-        //восстановим предыдущую команды в приемный буфер
-        recv_ind = strlen( recv_temp );
-        memset( recv_buff, 0x000, sizeof( recv_buff ) );
-        memcpy( recv_buff, recv_temp, strlen( recv_temp ) );
-        UartSendStr( recv_buff );
-        //продолжаем прием
-        HAL_UART_Receive_IT( &huart1, (uint8_t *)&recv_ch, sizeof( recv_ch ) );
-        return;
-       }*/
     recv_buff[recv_ind++] = recv_ch;
+    if ( recv_ch == KEY_ESC_CMD )
+        esc_ind = recv_ind; //признак команды ESC
+    if ( memcmp( recv_buff + esc_ind - 1, key_up, sizeof( key_up ) ) == 0 && esc_ind ) {
+        //вывод в консоль предыдущей команды
+        esc_ind = 0;
+        memset( recv_buff, 0x00, sizeof( recv_buff ) );
+        vt100CursorDn();
+        //копируем в буфер предыдущую команду
+        memcpy( recv_buff, recv_temp, strlen( recv_temp ) );
+        recv_ind = strlen( recv_temp );
+        UartSendStr( recv_buff );
+       }
     //проверим последний принятый байт, если CR - обработка команды
     if ( recv_buff[recv_ind - 1] == '\r' ) {
+        esc_ind = 0;
         recv_buff[recv_ind - 1] = '\0'; //уберем код CR
         //сохраним команду в буфере
-        //memset( recv_temp, 0x000, sizeof( recv_temp ) );
-        //memcpy( recv_temp, recv_buff, recv_ind );
+        memset( recv_temp, 0x00, sizeof( recv_temp ) );
+        memcpy( recv_temp, recv_buff, recv_ind );
         //выполнение команды в TaskCommand()
         osEventFlagsSet( cmnd_event, EVN_CMND_EXEC );
         return; //не выполняем запуск приема по UART1

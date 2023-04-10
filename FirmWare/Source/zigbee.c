@@ -241,7 +241,7 @@ static const osThreadAttr_t task3_attr = {
 static const osSemaphoreAttr_t sem1_attr = { .name = "ZBSemSend" };
 static const osSemaphoreAttr_t sem2_attr = { .name = "ZBSemAns" };
 static const osEventFlagsAttr_t evn1_attr = { .name = "ZBEvents1" };
-static const osEventFlagsAttr_t evn3_attr = { .name = "ZBEvents3" };
+static const osEventFlagsAttr_t evn2_attr = { .name = "ZBEvents2" };
 static const osMessageQueueAttr_t que_attr = { .name = "Recv" };
 static const osTimerAttr_t timer1_attr = { .name = "ZBTimer1" };
 static const osMutexAttr_t mutex_attr = { .name = "ZBBee", .attr_bits = osMutexPrioInherit };
@@ -256,7 +256,7 @@ void ZBInit( void ) {
     GetAnswer();
     //очередь событий
     zb_init = osEventFlagsNew( &evn1_attr );
-    zb_ctrl = osEventFlagsNew( &evn3_attr );
+    zb_ctrl = osEventFlagsNew( &evn2_attr );
     //таймер интервалов
     timer_start = osTimerNew( Timer1Callback, osTimerOnce, NULL, &timer1_attr );
     //семафоры блокировки
